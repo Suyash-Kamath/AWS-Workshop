@@ -1,30 +1,27 @@
 # Tech Stack
 
 ## Runtime & Language
-- Vanilla JavaScript (ES Modules, `type: "module"`)
-- No build step — runs directly in the browser via `index.html`
-- No frameworks or UI libraries
-
-## Testing
-- **Vitest** `^2.0.0` — test runner
-- **fast-check** `^3.0.0` — property-based testing (PBT)
-- **@vitest/coverage-v8** `^2.0.0` — code coverage
+- Vanilla JavaScript (inline in HTML)
+- Single `index.html` file — no external JS files, no build step
+- No frameworks, no libraries, no dependencies
 
 ## Key Architecture Principle
-Game logic is split into two layers:
-- `game-logic.js` — pure functions only, no DOM, fully testable
-- `index.html` (inline `<script>`) — all DOM, canvas, audio, and game loop code
+**Keep it simple:**
+- Everything lives in one HTML file
+- All JavaScript is inline in a `<script>` tag
+- All CSS is inline in a `<style>` tag
+- No external dependencies or imports
+- Just open `index.html` in a browser to play
 
-Pure functions in `game-logic.js` are exported and imported by both the game and the test suite.
-
-## Common Commands
+## Testing (Optional)
+The project includes optional tests for learning purposes:
+- **Vitest** `^2.0.0` — test runner
+- **fast-check** `^3.0.0` — property-based testing
+- Tests use `game-logic.js` (a separate file for testability only)
 
 ```bash
-# Run tests (single pass, no watch)
+# Run tests (if needed)
 npm test
-
-# Run tests with coverage
-npx vitest --run --coverage
 ```
 
-> The project has no build or compile step. Open `index.html` directly in a browser to play.
+> **Core principle:** The game should work by simply opening `index.html` — no npm, no build, no complexity.

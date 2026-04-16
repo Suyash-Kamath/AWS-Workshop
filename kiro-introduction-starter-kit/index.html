@@ -12,17 +12,17 @@
 </head>
 <body>
   <canvas id="gameCanvas"></canvas>
-  <script type="module">
-    import {
-      GRAVITY, FLAP_STRENGTH, PIPE_WIDTH, SCORE_BAR_HEIGHT, PIPE_MARGIN,
-      applyGravity, applyFlap, randomGapCenter, checkCollisionPure, checkScoring
-    } from './game-logic.js';
-
-    // ─── Constants (game-only, not shared) ───────────────────────────────────
-    const PIPE_SPEED     = 3;
-    const PIPE_INTERVAL  = 90;
-    const GHOSTY_SIZE    = 40;
-    const CLOUD_COUNT    = 10;
+  <script>
+    // ─── Constants ────────────────────────────────────────────────────────────
+    const GRAVITY          = 0.5;
+    const FLAP_STRENGTH    = 9;
+    const PIPE_WIDTH       = 60;
+    const SCORE_BAR_HEIGHT = 40;
+    const PIPE_MARGIN      = 40;
+    const PIPE_SPEED       = 3;
+    const PIPE_INTERVAL    = 90;
+    const GHOSTY_SIZE      = 40;
+    const CLOUD_COUNT      = 10;
 
     // ─── Canvas setup ─────────────────────────────────────────────────────────
     const canvas = document.getElementById('gameCanvas');
@@ -68,40 +68,75 @@
           this.highScore = 0;
         }
       },
-      increment() {
-        this.score++;
-      },
+      increment() { this.score++; },
       checkHighScore() {
         if (this.score > this.highScore) {
           this.highScore = this.score;
           try { localStorage.setItem(LOCAL_STORAGE_KEY, String(this.highScore)); } catch(e) {}
         }
       },
-      reset() {
-        this.score = 0;
-      }
+      reset() { this.score = 0; }
     };
+
+    // ─── Pure Game Logic ──────────────────────────────────────────────────────
+    function applyGravity(ghosty) {
+      ghosty.vy += GRAVITY;
+      ghosty.y  += ghosty.vy;
+    }
+
+    function applyFlap(ghosty) {
+      ghosty.vy = -FLAP_STRENGTH;
+    }
+
+    function randomGapCenter(canvasHeight, gapHeight, scoreBarHeight, margin) {
+      const minY = gapHeight / 2 + margin;
+      const maxY = canvasHeight - scoreBarHeight - gapHeight / 2 - margin;
+      return minY + Math.random() * (maxY - minY);
+    }
+
+    function checkCollisionPure(ghosty, pipes, canvasHeight, scoreBarHeight) {
+      const hw = ghosty.width  / 2;
+      const hh = ghosty.height / 2;
+      const gLeft   = ghosty.x - hw;
+      const gRight  = ghosty.x + hw;
+      const gTop    = ghosty.y - hh;
+      const gBottom = ghosty.y + hh;
+
+      if (gTop < 0 || gBottom > canvasHeight - scoreBarHeight) return true;
+
+      for (const p of pipes) {
+        const gapHalf       = p.gapHeight / 2;
+        const topPipeBottom = p.gapY - gapHalf;
+        const botPipeTop    = p.gapY + gapHalf;
+        const overlapX      = gRight > p.x && gLeft < p.x + p.width;
+        if (overlapX) {
+          if (gTop    < topPipeBottom) return true;
+          if (gBottom > botPipeTop)    return true;
+        }
+      }
+      return false;
+    }
+
+    function checkScoring(ghosty, pipes, scoreManager) {
+      for (const p of pipes) {
+        if (!p.scored && ghosty.x > p.x + p.width) {
+          p.scored = true;
+          scoreManager.increment();
+        }
+      }
+    }
 
     // ─── Ghosty ───────────────────────────────────────────────────────────────
     const ghosty = {
-      x: 0,
-      y: 0,
-      vy: 0,
-      width:  GHOSTY_SIZE,
-      height: GHOSTY_SIZE,
+      x: 0, y: 0, vy: 0,
+      width: GHOSTY_SIZE, height: GHOSTY_SIZE,
       get rotation() {
-        // map vy to radians: -FLAP_STRENGTH → -30deg, positive → up to +90deg
-        const minDeg = -30, maxDeg = 90;
-        const deg = Math.max(minDeg, Math.min(maxDeg, this.vy * 6));
+        const deg = Math.max(-30, Math.min(90, this.vy * 6));
         return deg * Math.PI / 180;
       },
-      update() {
-        applyGravity(this);
-      },
-      flap() {
-        applyFlap(this);
-      },
-      reset() {
+      update() { applyGravity(this); },
+      flap()   { applyFlap(this); },
+      reset()  {
         this.x  = canvas.width * 0.25;
         this.y  = canvas.height * 0.4;
         this.vy = 0;
@@ -110,19 +145,13 @@
 
     // ─── Pipe Manager ─────────────────────────────────────────────────────────
     const pipeManager = {
+      pipes: [],
       frameCount: 0,
       update() {
         this.frameCount++;
-
-        // Scroll pipes
-        for (const p of this.pipes) {
-          p.x -= PIPE_SPEED;
-        }
-
-        // Despawn off-screen pipes
+        for (const p of this.pipes) p.x -= PIPE_SPEED;
         this.pipes = this.pipes.filter(p => p.x + PIPE_WIDTH > 0);
 
-        // Spawn new pipe
         if (this.frameCount % PIPE_INTERVAL === 0) {
           this.pipes.push({
             x:         canvas.width,
@@ -132,20 +161,10 @@
             scored:    false
           });
         }
-
-        // Score detection: ghosty passes pipe right edge
         checkScoring(ghosty, this.pipes, scoreManager);
       },
-      reset() {
-        this.pipes = [];
-        this.frameCount = 0;
-      }
+      reset() { this.pipes = []; this.frameCount = 0; }
     };
-
-    // ─── Collision Detection ──────────────────────────────────────────────────
-    function checkCollision() {
-      return checkCollisionPure(ghosty, pipeManager.pipes, canvas.height, SCORE_BAR_HEIGHT);
-    }
 
     // ─── Clouds ───────────────────────────────────────────────────────────────
     let clouds = [];
@@ -153,14 +172,12 @@
     function generateClouds() {
       clouds = [];
       for (let i = 0; i < CLOUD_COUNT; i++) {
-        const w  = 80 + Math.random() * 80;
-        const h  = 25 + Math.random() * 20;
+        const w = 80 + Math.random() * 80;
+        const h = 25 + Math.random() * 20;
         clouds.push({
-          x:  Math.random() * canvas.width,
-          y:  Math.random() * (canvas.height * 0.55),
-          width:  w,
-          height: h,
-          rx: h / 2
+          x: Math.random() * canvas.width,
+          y: Math.random() * (canvas.height * 0.55),
+          width: w, height: h, rx: h / 2
         });
       }
     }
@@ -201,7 +218,6 @@
       if (ghostyImgLoaded) {
         ctx.drawImage(ghostyImg, -g.width / 2, -g.height / 2, g.width, g.height);
       } else {
-        // Fallback: white rounded rectangle
         ctx.fillStyle = '#ffffff';
         ctx.beginPath();
         ctx.roundRect(-g.width / 2, -g.height / 2, g.width, g.height, 8);
@@ -219,14 +235,12 @@
         const topH    = p.gapY - gapHalf;
         const botY    = p.gapY + gapHalf;
         const botH    = canvas.height - botY;
+        const capH    = 12;
 
-        // Main pipe body
         ctx.fillStyle = '#2d8a2d';
         ctx.fillRect(p.x, 0, p.width, topH);
         ctx.fillRect(p.x, botY, p.width, botH);
 
-        // Darker cap at pipe ends
-        const capH = 12;
         ctx.fillStyle = '#1a5c1a';
         ctx.fillRect(p.x - 4, topH - capH, p.width + 8, capH);
         ctx.fillRect(p.x - 4, botY, p.width + 8, capH);
@@ -236,14 +250,11 @@
     function drawStartScreen() {
       ctx.fillStyle = 'rgba(0,0,0,0.45)';
       ctx.fillRect(0, 0, canvas.width, canvas.height - SCORE_BAR_HEIGHT);
-
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 52px monospace';
       ctx.fillText('Flappy Kiro', canvas.width / 2, canvas.height * 0.38);
-
       ctx.font = '22px monospace';
       ctx.fillStyle = '#f0f0f0';
       ctx.fillText('Press Space or Tap to Start', canvas.width / 2, canvas.height * 0.52);
@@ -252,18 +263,14 @@
     function drawGameOverScreen(score) {
       ctx.fillStyle = 'rgba(0,0,0,0.5)';
       ctx.fillRect(0, 0, canvas.width, canvas.height - SCORE_BAR_HEIGHT);
-
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-
       ctx.fillStyle = '#ff4444';
       ctx.font = 'bold 48px monospace';
       ctx.fillText('Game Over', canvas.width / 2, canvas.height * 0.35);
-
       ctx.fillStyle = '#fff';
       ctx.font = '26px monospace';
       ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height * 0.47);
-
       ctx.font = '20px monospace';
       ctx.fillStyle = '#ccc';
       ctx.fillText('Press Space or Tap to Restart', canvas.width / 2, canvas.height * 0.58);
@@ -272,16 +279,6 @@
     // ─── Game State ───────────────────────────────────────────────────────────
     let gameState = 'START';
 
-    // ─── Game object (reset flow) ─────────────────────────────────────────────
-    const game = {
-      reset() {
-        ghosty.reset();
-        pipeManager.reset();
-        scoreManager.reset();
-      }
-    };
-
-    // ─── Input Handler ────────────────────────────────────────────────────────
     function handleInput() {
       if (gameState === 'START') {
         gameState = 'PLAYING';
@@ -289,16 +286,15 @@
         ghosty.flap();
         audioPlayer.playJump();
       } else if (gameState === 'GAME_OVER') {
-        game.reset();
+        ghosty.reset();
+        pipeManager.reset();
+        scoreManager.reset();
         gameState = 'PLAYING';
       }
     }
 
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'Space') {
-        e.preventDefault();
-        handleInput();
-      }
+      if (e.code === 'Space') { e.preventDefault(); handleInput(); }
     });
 
     canvas.addEventListener('pointerdown', (e) => {
@@ -306,16 +302,11 @@
       handleInput();
     });
 
-    // ─── Resize Handler ───────────────────────────────────────────────────────
     window.addEventListener('resize', () => {
-      const prevW = canvas.width;
       const prevH = canvas.height;
       resizeCanvas();
-
-      // Reposition Ghosty proportionally
-      ghosty.x = canvas.width  * 0.25;
+      ghosty.x = canvas.width * 0.25;
       ghosty.y = ghosty.y * (canvas.height / prevH);
-
       generateClouds();
     });
 
@@ -325,7 +316,7 @@
         ghosty.update();
         pipeManager.update();
 
-        if (checkCollision()) {
+        if (checkCollisionPure(ghosty, pipeManager.pipes, canvas.height, SCORE_BAR_HEIGHT)) {
           gameState = 'GAME_OVER';
           audioPlayer.playGameOver();
           scoreManager.checkHighScore();
