@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flappy Kiro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+  <script type="module">
+    import {
+      GRAVITY, FLAP_STRENGTH, PIPE_WIDTH, SCORE_BAR_HEIGHT, PIPE_MARGIN,
+      applyGravity, applyFlap, randomGapCenter, checkCollisionPure, checkScoring
+    } from './game-logic.js';
+
+    // ─── Constants (game-only, not shared) ───────────────────────────────────
+    const PIPE_SPEED     = 3;
+    const PIPE_INTERVAL  = 90;
+    const GHOSTY_SIZE    = 40;
+    const CLOUD_COUNT    = 10;
+
+    // ─── Canvas setup ─────────────────────────────────────────────────────────
+    const canvas = document.getElementById('gameCanvas');
+    const ctx    = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width  = window.innerWidth;
+      canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+
+    // ─── Asset loading ────────────────────────────────────────────────────────
+    const ghostyImg = new Image();
+    let ghostyImgLoaded = false;
+    ghostyImg.onload  = () => { ghostyImgLoaded = true; };
+    ghostyImg.onerror = () => { ghostyImgLoaded = false; };
+    ghostyImg.src = 'assets/ghosty.png';
+
+    const audioJump     = new Audio('assets/jump.wav');
+    const audioGameOver = new Audio('assets/game_over.wav');
+
+    // ─── Audio Player ─────────────────────────────────────────────────────────
+    const audioPlayer = {
+      playJump() {
+        try { audioJump.currentTime = 0; audioJump.play(); } catch(e) {}
+      },
+      playGameOver() {
+        try { audioGameOver.currentTime = 0; audioGameOver.play(); } catch(e) {}
+      }
+    };
+
+    // ─── Score Manager ────────────────────────────────────────────────────────
+    const LOCAL_STORAGE_KEY = 'flappyKiroHighScore';
+
+    const scoreManager = {
+      score: 0,
+      highScore: 0,
+      init() {
+        try {
+          const stored = localStorage.getItem(LOCAL_STORAGE_KEY);
+          this.highScore = stored !== null ? parseInt(stored, 10) || 0 : 0;
+        } catch(e) {
+          this.highScore = 0;
+        }
+      },
+      increment() {
+        this.score++;
+      },
+      checkHighScore() {
+        if (this.score > this.highScore) {
+          this.highScore = this.score;
+          try { localStorage.setItem(LOCAL_STORAGE_KEY, String(this.highScore)); } catch(e) {}
+        }
+      },
+      reset() {
+        this.score = 0;
+      }
+    };
+
+    // ─── Ghosty ───────────────────────────────────────────────────────────────
+    const ghosty = {
+      x: 0,
+      y: 0,
+      vy: 0,
+      width:  GHOSTY_SIZE,
+      height: GHOSTY_SIZE,
+      get rotation() {
+        // map vy to radians: -FLAP_STRENGTH → -30deg, positive → up to +90deg
+        const minDeg = -30, maxDeg = 90;
+        const deg = Math.max(minDeg, Math.min(maxDeg, this.vy * 6));
+        return deg * Math.PI / 180;
+      },
+      update() {
+        applyGravity(this);
+      },
+      flap() {
+        applyFlap(this);
+      },
+      reset() {
+        this.x  = canvas.width * 0.25;
+        this.y  = canvas.height * 0.4;
+        this.vy = 0;
+      }
+    };
+
+    // ─── Pipe Manager ─────────────────────────────────────────────────────────
+    const pipeManager = {
+      frameCount: 0,
+      update() {
+        this.frameCount++;
+
+        // Scroll pipes
+        for (const p of this.pipes) {
+          p.x -= PIPE_SPEED;
+        }
+
+        // Despawn off-screen pipes
+        this.pipes = this.pipes.filter(p => p.x + PIPE_WIDTH > 0);
+
+        // Spawn new pipe
+        if (this.frameCount % PIPE_INTERVAL === 0) {
+          this.pipes.push({
+            x:         canvas.width,
+            gapY:      randomGapCenter(canvas.height, 0.28 * canvas.height, SCORE_BAR_HEIGHT, PIPE_MARGIN),
+            gapHeight: 0.28 * canvas.height,
+            width:     PIPE_WIDTH,
+            scored:    false
+          });
+        }
+
+        // Score detection: ghosty passes pipe right edge
+        checkScoring(ghosty, this.pipes, scoreManager);
+      },
+      reset() {
+        this.pipes = [];
+        this.frameCount = 0;
+      }
+    };
+
+    // ─── Collision Detection ──────────────────────────────────────────────────
+    function checkCollision() {
+      return checkCollisionPure(ghosty, pipeManager.pipes, canvas.height, SCORE_BAR_HEIGHT);
+    }
+
+    // ─── Clouds ───────────────────────────────────────────────────────────────
+    let clouds = [];
+
+    function generateClouds() {
+      clouds = [];
+      for (let i = 0; i < CLOUD_COUNT; i++) {
+        const w  = 80 + Math.random() * 80;
+        const h  = 25 + Math.random() * 20;
+        clouds.push({
+          x:  Math.random() * canvas.width,
+          y:  Math.random() * (canvas.height * 0.55),
+          width:  w,
+          height: h,
+          rx: h / 2
+        });
+      }
+    }
+
+    // ─── Renderer ─────────────────────────────────────────────────────────────
+    function drawBackground() {
+      ctx.fillStyle = '#87CEEB';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function drawClouds() {
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (const c of clouds) {
+        ctx.beginPath();
+        ctx.roundRect(c.x, c.y, c.width, c.height, c.rx);
+        ctx.fill();
+      }
+    }
+
+    function drawScoreBar(score, highScore) {
+      ctx.fillStyle = '#2c3e50';
+      ctx.fillRect(0, canvas.height - SCORE_BAR_HEIGHT, canvas.width, SCORE_BAR_HEIGHT);
+      ctx.fillStyle = '#ecf0f1';
+      ctx.font = 'bold 18px monospace';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(
+        `Score: ${score} | High: ${highScore}`,
+        canvas.width / 2,
+        canvas.height - SCORE_BAR_HEIGHT / 2
+      );
+    }
+
+    function drawGhosty(g) {
+      ctx.save();
+      ctx.translate(g.x, g.y);
+      ctx.rotate(g.rotation);
+      if (ghostyImgLoaded) {
+        ctx.drawImage(ghostyImg, -g.width / 2, -g.height / 2, g.width, g.height);
+      } else {
+        // Fallback: white rounded rectangle
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.roundRect(-g.width / 2, -g.height / 2, g.width, g.height, 8);
+        ctx.fill();
+        ctx.strokeStyle = '#aaa';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawPipes(pipes) {
+      for (const p of pipes) {
+        const gapHalf = p.gapHeight / 2;
+        const topH    = p.gapY - gapHalf;
+        const botY    = p.gapY + gapHalf;
+        const botH    = canvas.height - botY;
+
+        // Main pipe body
+        ctx.fillStyle = '#2d8a2d';
+        ctx.fillRect(p.x, 0, p.width, topH);
+        ctx.fillRect(p.x, botY, p.width, botH);
+
+        // Darker cap at pipe ends
+        const capH = 12;
+        ctx.fillStyle = '#1a5c1a';
+        ctx.fillRect(p.x - 4, topH - capH, p.width + 8, capH);
+        ctx.fillRect(p.x - 4, botY, p.width + 8, capH);
+      }
+    }
+
+    function drawStartScreen() {
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height - SCORE_BAR_HEIGHT);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 52px monospace';
+      ctx.fillText('Flappy Kiro', canvas.width / 2, canvas.height * 0.38);
+
+      ctx.font = '22px monospace';
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillText('Press Space or Tap to Start', canvas.width / 2, canvas.height * 0.52);
+    }
+
+    function drawGameOverScreen(score) {
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height - SCORE_BAR_HEIGHT);
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillStyle = '#ff4444';
+      ctx.font = 'bold 48px monospace';
+      ctx.fillText('Game Over', canvas.width / 2, canvas.height * 0.35);
+
+      ctx.fillStyle = '#fff';
+      ctx.font = '26px monospace';
+      ctx.fillText(`Score: ${score}`, canvas.width / 2, canvas.height * 0.47);
+
+      ctx.font = '20px monospace';
+      ctx.fillStyle = '#ccc';
+      ctx.fillText('Press Space or Tap to Restart', canvas.width / 2, canvas.height * 0.58);
+    }
+
+    // ─── Game State ───────────────────────────────────────────────────────────
+    let gameState = 'START';
+
+    // ─── Game object (reset flow) ─────────────────────────────────────────────
+    const game = {
+      reset() {
+        ghosty.reset();
+        pipeManager.reset();
+        scoreManager.reset();
+      }
+    };
+
+    // ─── Input Handler ────────────────────────────────────────────────────────
+    function handleInput() {
+      if (gameState === 'START') {
+        gameState = 'PLAYING';
+      } else if (gameState === 'PLAYING') {
+        ghosty.flap();
+        audioPlayer.playJump();
+      } else if (gameState === 'GAME_OVER') {
+        game.reset();
+        gameState = 'PLAYING';
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        handleInput();
+      }
+    });
+
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      handleInput();
+    });
+
+    // ─── Resize Handler ───────────────────────────────────────────────────────
+    window.addEventListener('resize', () => {
+      const prevW = canvas.width;
+      const prevH = canvas.height;
+      resizeCanvas();
+
+      // Reposition Ghosty proportionally
+      ghosty.x = canvas.width  * 0.25;
+      ghosty.y = ghosty.y * (canvas.height / prevH);
+
+      generateClouds();
+    });
+
+    // ─── Main Game Loop ───────────────────────────────────────────────────────
+    function tick() {
+      if (gameState === 'PLAYING') {
+        ghosty.update();
+        pipeManager.update();
+
+        if (checkCollision()) {
+          gameState = 'GAME_OVER';
+          audioPlayer.playGameOver();
+          scoreManager.checkHighScore();
+        }
+
+        drawBackground();
+        drawClouds();
+        drawPipes(pipeManager.pipes);
+        drawGhosty(ghosty);
+        drawScoreBar(scoreManager.score, scoreManager.highScore);
+
+      } else if (gameState === 'START') {
+        drawBackground();
+        drawClouds();
+        drawGhosty(ghosty);
+        drawScoreBar(scoreManager.score, scoreManager.highScore);
+        drawStartScreen();
+
+      } else if (gameState === 'GAME_OVER') {
+        drawBackground();
+        drawClouds();
+        drawPipes(pipeManager.pipes);
+        drawGhosty(ghosty);
+        drawScoreBar(scoreManager.score, scoreManager.highScore);
+        drawGameOverScreen(scoreManager.score);
+      }
+
+      requestAnimationFrame(tick);
+    }
+
+    // ─── Init ─────────────────────────────────────────────────────────────────
+    scoreManager.init();
+    generateClouds();
+    ghosty.reset();
+    requestAnimationFrame(tick);
+  </script>
+</body>
+</html>
