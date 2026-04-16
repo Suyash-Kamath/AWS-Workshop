@@ -8,13 +8,13 @@
 
 - [ ] 2. Core game constants and state machine
   - [~] 2.1 Define all game constants (`GRAVITY`, `FLAP_STRENGTH`, `PIPE_SPEED`, `PIPE_INTERVAL`, `GAP_HEIGHT`, `PIPE_WIDTH`, `SCORE_BAR_HEIGHT`) as named constants at the top of the script
-  - [ ] 2.2 Implement the `gameState` variable with values `'START'`, `'PLAYING'`, `'GAME_OVER'` and wire it to the main game loop branching logic
+  - [~] 2.2 Implement the `gameState` variable with values `'START'`, `'PLAYING'`, `'GAME_OVER'` and wire it to the main game loop branching logic
 
 - [ ] 3. Ghosty physics
-  - [ ] 3.1 Implement `Ghosty` object with `x`, `y`, `vy`, `width`, `height` properties and `update()`, `flap()`, `reset()` methods
-  - [ ] 3.2 `update()` applies `GRAVITY` to `vy` each frame and adds `vy` to `y`
-  - [ ] 3.3 `flap()` sets `vy = -FLAP_STRENGTH`
-  - [ ] 3.4 Derive `rotation` from `vy` for sprite rotation (clamped to a reasonable range)
+  - [~] 3.1 Implement `Ghosty` object with `x`, `y`, `vy`, `width`, `height` properties and `update()`, `flap()`, `reset()` methods
+  - [~] 3.2 `update()` applies `GRAVITY` to `vy` each frame and adds `vy` to `y`
+  - [~] 3.3 `flap()` sets `vy = -FLAP_STRENGTH`
+  - [~] 3.4 Derive `rotation` from `vy` for sprite rotation (clamped to a reasonable range)
 
 - [ ] 4. Renderer — background, clouds, and score bar
   - [ ] 4.1 Implement `drawBackground()` filling the canvas with light blue each frame
